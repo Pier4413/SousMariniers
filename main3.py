@@ -1,4 +1,5 @@
 import sys
+import random
 
 class Box(object):
 
@@ -40,6 +41,15 @@ class Box(object):
     return ret
 
 class Row(list[Box]):
+  
+  def __init__(self):
+    self.list_of_water = list[Box]()
+
+  def append(self, __object: "Box") -> None:
+    super().append(__object)
+    if __object.is_island is False:
+      self.list_of_water.append(__object)
+
   def __str__(self) -> str:
     ret = f""
     for b in self:
@@ -47,6 +57,14 @@ class Row(list[Box]):
     return ret
 
 class Grid(list[Row]):
+  
+  def __init__(self):
+    self.list_of_water = list[Row]()
+
+  def append(self, __object: "Row") -> None:
+    super().append(__object)
+    self.list_of_water.append(__object.list_of_water)
+
   def copy(self, other : "Grid"):
     self.clear()
     for row in other:
@@ -86,6 +104,7 @@ class Player(object):
     self.sonar = 0
     self.silence = 0
     self.mine = 0
+    self.coordinate_list = list[Box]()
   
   def calculate_is_possible(self, mouvement : str):
     for row in self.grid_start:
@@ -103,6 +122,70 @@ class Player(object):
           if box.x - 1 >= 0:
             box.determine_mouvement(self.grid_end[box.y][box.x-1])
 
+  def get_initial_position(self) -> str:
+    l_random_row_index = random.randrange(0,len(self.grid_start) - 1)
+    l_random_row = self.grid_start.list_of_water[l_random_row_index]
+    l_box_index = random.randrange(0, len(l_random_row) - 1)
+    l_box = l_random_row[l_box_index]
+    self.coordinate_list.append(l_box)
+    return f"{l_box.x} {l_box.y}"
+  
+  def get_best_move(self) -> str:
+
+    # On cree la liste des boites voisines
+    list_neighbourgs = list[Box]()
+
+    if self.x - 1 >= 0: 
+      list_neighbourgs.append(self.grid_start[self.y][self.x-1])
+
+    if self.x + 1 < k_MapSize:
+      list_neighbourgs.append(self.grid_start[self.y][self.x+1])
+    
+    if self.y - 1 >= 0:
+      list_neighbourgs.append(self.grid_start[self.y-1][self.x])
+    
+    if self.y + 1 < k_MapSize:
+      list_neighbourgs.append(self.grid_start[self.y+1][self.x])
+
+    # On regarde les voisins en commencant par se demander si on peut
+    # on peut se deplacer a l'ouest
+    # puis a l'est
+    # puis au nord
+    # puis au sud
+    for neighbourg in list_neighbourgs:
+      # Si on a pas deja visite la case et si la case n'est pas une ile
+      if neighbourg not in self.coordinate_list and neighbourg.is_island is False:
+        self.coordinate_list.append(neighbourg)
+        if neighbourg.x == self.x - 1:
+          return "MOVE W"
+        elif neighbourg.x == self.x + 1:
+          return "MOVE E"
+        elif neighbourg.y == self.y - 1:
+          return "MOVE N"
+        elif neighbourg.y == self.y + 1:
+          return "MOVE S"
+    
+    # Si on a fait surface on nettoie les cases deja visitees et on enregistre la case courante
+    # pour ne pas y retourner
+    self.coordinate_list.clear()
+    self.coordinate_list.append(self.grid_start[self.y][self.x])
+    return "SURFACE"
+  
+  def get_best_item_to_charge(self) -> str:
+    if self.silence > 0:
+      return "SILENCE"
+    elif self.mine > 0:
+      return "MINE"
+    elif self.torpedo > 0:
+      return "TORPEDO"
+    elif self.sonar > 0:
+      return "SONAR"
+    
+    return ""
+    
+  def __str__(self) -> str:
+    return f"X : {self.x} | Y : {self.y} | Life : {self.life} | Torpedo : {self.torpedo} | Sonar : {self.sonar} | Silence : {self.silence} | Mine : {self.mine}"
+  
 k_MapSize = 15
 k_MapSector = 3
 k_GridSector = k_MapSize//k_MapSector
@@ -141,34 +224,25 @@ if __name__ == "__main__":
   my_player = Player(my_id, my_grid)
   opp_player = Player(1-my_id, opp_grid)
 
-  print("0 0")
+  print(my_player.get_initial_position())
   while True:
     if file is None:
-      x, y, my_life, opp_life, torpedo_cooldown, sonar_cooldown, silence_cooldown, mine_cooldown = [int(i) for i in input().split()]
-      my_player.x = x
-      my_player.y = y
-      my_player.life = my_life
-      my_player.torpedo = torpedo_cooldown
-      my_player.sonar = sonar_cooldown
-      my_player.silence = silence_cooldown
-      my_player.mine = mine_cooldown
+      my_player.x, my_player.y, my_player.life, opp_player.life, my_player.torpedo, my_player.sonar, my_player.silence, my_player.mine = [int(i) for i in input().split()]
       sonar_result = input().split()
       opponent_orders = input().split("|")
     else:
       line = file.readline() # Utiliser pour verifier s'il reste des lignes avec len(line) == 0 et couper pour eviter une exception
       if len(line) == 0:
         break
-      x, y, my_life, opp_life = [int(i) for i in line.split()]
+      my_player.x, my_player.y, my_player.life, opp_player.life = [int(i) for i in line.split()]
       sonar_result = file.readline().split()
       opponent_orders = file.readline().split("|")
-    my_player.life = my_life
-    opp_player.life = opp_life
     
+    print(f"{str(my_player)}", file=sys.stderr, flush=True)
     for o in opponent_orders:
       if "MOVE" in o:
         mouvement = o.split()[1]
         opp_player.calculate_is_possible(mouvement=mouvement)
 
     opp_player.grid_start.copy(opp_player.grid_end)
-    print("MOVE S")
-    print(str(opp_player.grid_end), file=sys.stderr, flush=True)
+    print(f"{my_player.get_best_move()} {my_player.get_best_item_to_charge()}")
