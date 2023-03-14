@@ -11,3 +11,6 @@
 5 5 6 6
 N
 MOVE N
+5 5 6 6
+N
+MOVE N | TORPEDO 5 5
