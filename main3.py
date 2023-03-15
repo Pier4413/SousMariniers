@@ -272,7 +272,8 @@ class Player(object):
     result = 0
     for y in range(0,k_MapSize):
       for x in range(0,k_MapSize):
-        if self.grid_end[y][x].sector == sector and self.grid_end[y][x].is_start is True:
+        if self.grid_start[y][x].sector == sector and self.grid_start[y][x].is_start is True:
+          print(f"ICI {sector} {x}{y} {self.grid_start[y][x].is_start}", file=sys.stderr)
           result += 1
     return result
 
@@ -285,10 +286,12 @@ class Player(object):
       value_of_max = 0
       for i in range(1,10):
         value = self.calculate_number_of_ones_by_sector(i)
+        print(f"VALUE OF 1 : {value} [{i}]", file=sys.stderr)
         if value > value_of_max:
           value_of_max = value
           index_of_max = i
       if index_of_max > 0:
+        
         return index_of_max
   
   def activate_sonar_sector(self, sector : int) -> None:
