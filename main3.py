@@ -165,8 +165,6 @@ class Player(object):
             box.determine_mouvement(self.grid_end[box.y][box.x-1])
           if box.x == 0:
             self.grid_end[box.y][box.x].is_start = False
-    if mouvement == "N":
-      print(f"TEST TEST TEST \n\n{self.grid_end}\n\n")
 
   def get_initial_position(self) -> str:
     """
@@ -252,6 +250,9 @@ class Player(object):
   def calculate_torpedo_impact(self, torpedo_coordinates : tuple[int, int]) -> None:
     """
       Ameliore la grille de fin a partir des coups de torpille adverses
+
+      Fonctionne sur un carre de 4 de cote et non pas sur la zone reelle.
+      On peut avoir des petits ecarts (en plus) sur la position
     """
     l_box_impact = self.grid_start[torpedo_coordinates[1]][torpedo_coordinates[0]]
     for row in self.grid_start:
@@ -275,7 +276,7 @@ class Player(object):
           result += 1
     return result
 
-  def should_use_sonar(self) -> str:
+  def should_use_sonar(self) -> int:
     """
       Determine s'il faut utiliser le sonar et si ou dans quel secteur
     """
@@ -288,8 +289,68 @@ class Player(object):
           value_of_max = value
           index_of_max = i
       if index_of_max > 0:
-        return f"SONAR {index_of_max}"
-    
+        return index_of_max
+  
+  def activate_sonar_sector(self, sector : int) -> None:
+    """
+      Supprime toutes les cases hors d'un secteur de l'algo de placement
+
+      :param sector: Le secteur vise
+      :type sector: int
+    """
+    for row in self.grid_start:
+      for box in row:
+        if box.sector != sector:
+          box.is_start = False
+  
+  def clear_sonar_sector(self, sector : int) -> None:
+    """
+      Supprime toutes les cases dans un secteur vise de l'algo de placement
+
+      :param sector: Le secteur vise
+      :type sector: int
+    """
+    for row in self.grid_start:
+      for box in row:
+        if box.sector == sector:
+          box.is_start = False
+  
+  def calculate_silence(self) -> None:
+    """
+      Mets à jour la grille en fonction des silences pour permettre de prendre en compte le fait que
+      l'adversaire peut s'etre deplace de plusieurs cases avec le silence dans n'importe quelle direction
+    """
+    for row in self.grid_start:
+      for box in row:
+        if box.is_start is True:
+          # Permet de gerer si on rencontre une ile sur le chemin (impossible de traverser)
+          has_island_on_x = False
+          has_island_on_y = False
+          # -4 à -1 : sens W et N
+          # 0 : position courante possible
+          # 1 à 4 : sens E et S
+          for i in range(-4,5):
+            # On reinitialise les presences d'iles sur les deux sens pour ne pas compter une ile qui n'existe pas (i.e elle existe vers le W mais pas le E par exemple)
+            if i == 0:
+              has_island_on_y = False
+              has_island_on_x = False
+
+            # On gere les silences possibles horizontalement
+            if (box.x + i) >= 0 and (box.x + i) < k_MapSize:
+              box_x = self.grid_end[box.y][box.x+i]
+              if box_x.is_island is False and has_island_on_x is False:
+                box_x.is_start = True 
+              else:
+                has_island_on_x = True
+
+            # On gere les silences possibles verticalement
+            if (box.y + i) >= 0 and (box.y + i) < k_MapSize:
+              box_y = self.grid_end[box.y+i][box.x]
+              if box_y.is_island is False and has_island_on_y is False:
+                box_y.is_start = True
+              else:
+                has_island_on_y = True 
+
   def __str__(self) -> str:
     """
       Affiche des informations sur le joueur pour le debug
@@ -352,12 +413,21 @@ if __name__ == "__main__":
   # On choisit la position de depart
   print(my_player.get_initial_position())
   
+  sector_of_sonar = None
+
   while True:
 
     # On recupere la liste des inputs (soit depuis le jeu, soit depuis le fichier pour les tests)
     if file is None:
       my_player.x, my_player.y, my_player.life, opp_player.life, my_player.torpedo, my_player.sonar, my_player.silence, my_player.mine = [int(i) for i in input().split()]
-      sonar_result = input().split()
+      sonar_result = input()
+      
+      # On prend en compte le restultat du sonar pour mettre a jour la grille
+      if sonar_result == "Y":
+        opp_player.activate_sonar_sector(sector_of_sonar)
+      elif sonar_result == "N":
+        opp_player.clear_sonar_sector(sector_of_sonar)
+
       opponent_orders = input().split("|")
     else:
       line = file.readline() # Utiliser pour verifier s'il reste des lignes avec len(line) == 0 et couper pour eviter une exception
@@ -375,22 +445,22 @@ if __name__ == "__main__":
       elif "TORPEDO" in o:
         case_coordinate = (int(o.split()[1]), int(o.split()[2]))
         opp_player.calculate_torpedo_impact(torpedo_coordinates=case_coordinate)
-    
+      elif "SILENCE" in o:
+        opp_player.calculate_silence()
 
     # On copie la grille de fin dans la grille de depart pour le prochain tour
     opp_player.grid_start.copy(opp_player.grid_end)
-
 
     # On calcule nos ordres en fonction de la position probable de l'adversaire
     order = f"{my_player.get_best_move()} {my_player.get_best_item_to_charge()}"
 
     should_use_torpedo = None # TODO : Implementer l'algo de gestion des tirs de torpille
+    sector_of_sonar = my_player.should_use_sonar()
     if should_use_torpedo is not None:
       pass
-    else:
-      should_use_sonar = my_player.should_use_sonar()
-      if should_use_sonar is not None:
-        order = f"{order} | {should_use_sonar}"
-
-    # On envoie l'ordre final
+    elif sector_of_sonar is not None:
+      order = f"{order} | SONAR {sector_of_sonar}"
+        
+    # On affiche la grille des positions possibles de l'adversaire et on envoie l'ordre final
+    print(opp_player.grid_end, file=sys.stderr, flush=True)
     print(order)
