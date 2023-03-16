@@ -31,6 +31,12 @@ class Box(object):
     if end_box.is_island is False:
       end_box.is_start = self.is_start
 
+  def __eq__(self, __o: object) -> bool:
+    if type(__o) != "Box":
+      return False
+    
+    return __o.x == self.x and __o.y == self.y
+  
   def __str__(self) -> str:
     return f"{1 if self.is_start is True else 0}"
 
@@ -179,7 +185,7 @@ class Player(object):
     self.coordinate_list.append(l_box)
     return f"{l_box.x} {l_box.y}"
   
-  def get_best_move(self) -> str:
+  def get_best_move(self, opp_end_grid : dict) -> str:
     """
       Choix du déplacement
 
@@ -188,44 +194,67 @@ class Player(object):
     """
     # TODO : Trouver un moyen de se rapprocher de l'adversaire en fonction de la grille des zones de fin (grid_end)
     # On cree la liste des boites voisines
-    list_neighbourgs = list[Box]()
+    
+    # Seuil a partir du quel on vise le secteur dans lequel se trouve l'ennemi, sinon on fait le serpent de mer
+    threshold = 15
+    max_sector = opp_end_grid["maximum"]
+    
+    list_neighbourgs = {
+      "N": None,
+      "S": None,
+      "E": None,
+      "W": None
+    }
 
     if self.x - 1 >= 0: 
-      list_neighbourgs.append(self.grid_start[self.y][self.x-1])
+      list_neighbourgs["E"] = self.grid_start[self.y][self.x-1]
 
     if self.x + 1 < k_MapSize:
-      list_neighbourgs.append(self.grid_start[self.y][self.x+1])
+      list_neighbourgs["W"] = self.grid_start[self.y][self.x+1]
     
     if self.y - 1 >= 0:
-      list_neighbourgs.append(self.grid_start[self.y-1][self.x])
+      list_neighbourgs["N"] = self.grid_start[self.y-1][self.x]
     
     if self.y + 1 < k_MapSize:
-      list_neighbourgs.append(self.grid_start[self.y+1][self.x])
+      list_neighbourgs["S"] = self.grid_start[self.y+1][self.x]
 
     # On regarde les voisins en commencant par se demander si on peut
     # on peut se deplacer a l'ouest
     # puis a l'est
     # puis au nord
     # puis au sud
-    for neighbourg in list_neighbourgs:
-      # Si on a pas deja visite la case et si la case n'est pas une ile
-      if neighbourg not in self.coordinate_list and neighbourg.is_island is False:
-        self.coordinate_list.append(neighbourg)
-        if neighbourg.x == self.x - 1:
-          return "MOVE W"
-        elif neighbourg.x == self.x + 1:
-          return "MOVE E"
-        elif neighbourg.y == self.y - 1:
-          return "MOVE N"
-        elif neighbourg.y == self.y + 1:
-          return "MOVE S"
-    
-    # Si on a fait surface on nettoie les cases deja visitees et on enregistre la case courante
-    # pour ne pas y retourner
-    self.coordinate_list.clear()
-    self.coordinate_list.append(self.grid_start[self.y][self.x])
-    return "SURFACE"
+    if max_sector[1] < threshold:
+      if self.grid_start[self.y][self.x].sector // 3 > max_sector[0] //3:
+        return self.make_a_move("N", list_neighbourgs["N"], list_neighbourgs)
+      elif self.grid_start[self.y][self.x].sector // 3 < max_sector[0] //3:
+        return self.make_a_move("S", list_neighbourgs["S"], list_neighbourgs)
+      else:
+        if self.grid_start[self.y][self.x].sector % 3 > max_sector[0] % 3:
+          return self.make_a_move("E", list_neighbourgs["E"], list_neighbourgs)
+        elif self.grid_start[self.y][self.x].sector % 3 < max_sector[0] % 3:
+          return self.make_a_move("W", list_neighbourgs["W"], list_neighbourgs)
+        else:
+          return self.make_a_move(None, None, list_neighbourgs)
+    else:
+      return self.make_a_move(None, None, list_neighbourgs)
   
+  def make_a_move(self, move : str, neighbourg : Box, list_neighbourgs : dict) -> str:
+    ret = None
+    if move is not None and neighbourg is not None and neighbourg not in self.coordinate_list and neighbourg.is_island is False:
+      self.coordinate_list.append(neighbourg)
+      ret = f"MOVE {move}"
+    else:
+      for neighbourg in list_neighbourgs.values():
+        if ret is None and neighbourg is not None:
+          ret = self.random_move(neighbourg)
+    
+    if ret is None:
+      self.coordinate_list.clear()
+      self.coordinate_list.append(self.grid_start[self.y][self.x])
+      return f"SURFACE"
+    else:
+      return ret
+    
   def get_best_item_to_charge(self) -> str:
     """
       Choix du meilleur outil a charger
@@ -270,29 +299,36 @@ class Player(object):
       :rtype: int
     """
     result = 0
-    for y in range(0,k_MapSize):
-      for x in range(0,k_MapSize):
-        if self.grid_start[y][x].sector == sector and self.grid_start[y][x].is_start is True:
-          print(f"ICI {sector} {x}{y} {self.grid_start[y][x].is_start}", file=sys.stderr)
+    for row in self.grid_end:
+      for box in row:
+        if box.sector == sector and box.is_start:
           result += 1
     return result
 
-  def should_use_sonar(self) -> int:
+  def calculate_ones_by_sectors_and_max(self) -> dict:
+    """
+      Calcule les uns par secteur et trouve le couple maximum (secteur et valeur)
+    """
+    ret = {
+      "maximum": (0, 0),
+      "values" : list[tuple[int, int]]()
+    }
+
+    for i in range(1,10):
+      value = self.calculate_number_of_ones_by_sector(i)
+      ret["values"].append((i, value))
+
+      if value > ret["maximum"][1]:
+        ret["maximum"] = (i, value)
+
+    return ret
+  
+  def should_use_sonar(self, max_values : dict) -> int:
     """
       Determine s'il faut utiliser le sonar et si ou dans quel secteur
     """
-    if self.sonar == 0:
-      index_of_max = 0
-      value_of_max = 0
-      for i in range(1,10):
-        value = self.calculate_number_of_ones_by_sector(i)
-        print(f"VALUE OF 1 : {value} [{i}]", file=sys.stderr)
-        if value > value_of_max:
-          value_of_max = value
-          index_of_max = i
-      if index_of_max > 0:
-        
-        return index_of_max
+    if self.sonar == 0 and max_values["maximum"][0] > 0:
+      return max_values["maximum"][0]
   
   def activate_sonar_sector(self, sector : int) -> None:
     """
@@ -354,6 +390,18 @@ class Player(object):
               else:
                 has_island_on_y = True 
 
+  def random_move(self, neighbourg : Box) -> str:
+    if neighbourg not in self.coordinate_list and neighbourg.is_island is False:
+      self.coordinate_list.append(neighbourg)
+      if neighbourg.x == self.x - 1:
+        return "MOVE W"
+      elif neighbourg.x == self.x + 1:
+        return "MOVE E"
+      elif neighbourg.y == self.y - 1:
+        return "MOVE N"
+      elif neighbourg.y == self.y + 1:
+        return "MOVE S"
+      
   def __str__(self) -> str:
     """
       Affiche des informations sur le joueur pour le debug
@@ -396,9 +444,9 @@ if __name__ == "__main__":
 
     # Suivant si on est dans le fichier ou pas pour le mode testing
     if file is None:
-      data = input()
+      data = input().strip()
     else:
-      data = file.readline()
+      data = file.readline().strip()
 
     # On parse la ligne en cours
     for index, x in enumerate(data):
@@ -453,16 +501,20 @@ if __name__ == "__main__":
 
     # On copie la grille de fin dans la grille de depart pour le prochain tour
     opp_player.grid_start.copy(opp_player.grid_end)
+    
+    # Calcule des uns par secteur (on le fait dans une méthode séparé pour le faire qu'une seule dans toute la boucle)
+    new_pos = opp_player.calculate_ones_by_sectors_and_max()
 
     # On calcule nos ordres en fonction de la position probable de l'adversaire
-    order = f"{my_player.get_best_move()} {my_player.get_best_item_to_charge()}"
+    order = f"{my_player.get_best_move(new_pos)} {my_player.get_best_item_to_charge()}"
 
     should_use_torpedo = None # TODO : Implementer l'algo de gestion des tirs de torpille
-    sector_of_sonar = my_player.should_use_sonar()
+    sector_of_sonar = opp_player.should_use_sonar(new_pos)
     if should_use_torpedo is not None:
       pass
     elif sector_of_sonar is not None:
       order = f"{order} | SONAR {sector_of_sonar}"
+      sector_of_sonar = None
         
     # On affiche la grille des positions possibles de l'adversaire et on envoie l'ordre final
     print(opp_player.grid_end, file=sys.stderr, flush=True)
