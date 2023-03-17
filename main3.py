@@ -478,7 +478,8 @@ if __name__ == "__main__":
         opp_player.activate_sonar_sector(sector_of_sonar)
       elif sonar_result == "N":
         opp_player.clear_sonar_sector(sector_of_sonar)
-
+        
+      
       opponent_orders = input().split("|")
     else:
       line = file.readline() # Utiliser pour verifier s'il reste des lignes avec len(line) == 0 et couper pour eviter une exception
@@ -487,6 +488,9 @@ if __name__ == "__main__":
       my_player.x, my_player.y, my_player.life, opp_player.life = [int(i) for i in line.split()]
       sonar_result = file.readline().split()
       opponent_orders = file.readline().split("|")
+    
+    # On reinitialise le dernier secteur du sonar
+    sector_of_sonar = None
     
     # On parse les ordres adverses pour detecter la position la plus probable de celui-ci
     for o in opponent_orders:
@@ -514,7 +518,6 @@ if __name__ == "__main__":
       pass
     elif sector_of_sonar is not None:
       order = f"{order} | SONAR {sector_of_sonar}"
-      sector_of_sonar = None
         
     # On affiche la grille des positions possibles de l'adversaire et on envoie l'ordre final
     print(opp_player.grid_end, file=sys.stderr, flush=True)
